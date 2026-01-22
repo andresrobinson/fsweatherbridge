@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSX Weather Bridge - Settings</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .section h3 {
+            margin-top: 0;
+        }
+        .form-group {
+            margin: 10px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0052a3;
+        }
+        nav {
+            margin-bottom: 20px;
+        }
+        nav a {
+            margin-right: 15px;
+            text-decoration: none;
+            color: #0066cc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a href="/">Status</a>
+            <a href="/map">Map</a>
+            <a href="/settings">Settings</a>
+            <a href="/stored-weather">Stored Weather</a>
+            <a href="/logs">Logs</a>
+        </nav>
+        
+        <h1>Settings</h1>
+        
+        <form id="settingsForm">
+            <div class="section">
+                <h3>Weather Source</h3>
+                <div class="form-group">
+                    <label>Enabled:</label>
+                    <input type="checkbox" id="weatherSourceEnabled" checked>
+                </div>
+                <div class="form-group">
+                    <label>Provider:</label>
+                    <select id="weatherSourceType">
+                        <option value="aviationweather">AviationWeather.gov</option>
+                        <option value="manual">Manual (No automatic fetching)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cache Seconds:</label>
+                    <input type="number" id="cacheSeconds" value="45" min="0" max="300">
+                </div>
+                <div class="form-group">
+                    <label>METAR Refresh Rate (seconds, max 60):</label>
+                    <input type="number" id="metarRefreshSeconds" value="60" min="1" max="60">
+                    <small style="color: #666;">Maximum refresh rate: 60 seconds (1 minute)</small>
+                </div>
+                <div class="form-group">
+                    <label>TAF Refresh Rate (seconds, max 600):</label>
+                    <input type="number" id="tafRefreshSeconds" value="600" min="1" max="600">
+                    <small style="color: #666;">Maximum refresh rate: 600 seconds (10 minutes)</small>
+                </div>
+                <div class="form-group">
+                    <button type="button" onclick="enhanceStationNames()" style="background: #10b981; margin-top: 10px;">Enhance Station Names from AviationWeather.gov</button>
+                    <small style="color: #666; display: block; margin-top: 5px;">Updates station names using AviationWeather.gov airport data API</small>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3>Weather Combining</h3>
+                <div class="form-group">
+                    <label>Mode:</label>
+                    <select id="combiningMode">
+                        <option value="metar_only">METAR Only</option>
+                        <option value="metar_taf_fallback">METAR + TAF Fallback</option>
+                        <option value="metar_taf_assist">METAR + TAF Assist</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3>Smoothing</h3>
+                <div class="form-group">
+                    <label>Max Wind Direction Change (deg):</label>
+                    <input type="number" id="maxWindDirChange" value="5.0" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Max Wind Speed Change (kt):</label>
+                    <input type="number" id="maxWindSpeedChange" value="2.0" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Max QNH Change (hPa):</label>
+                    <input type="number" id="maxQNHChange" value="0.5" step="0.1">
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3>Station Selection</h3>
+                <div class="form-group">
+                    <label>Radius (NM):</label>
+                    <input type="number" id="stationRadius" value="50.0" step="1.0">
+                </div>
+                <div class="form-group">
+                    <label>Max Stations:</label>
+                    <input type="number" id="maxStations" value="3" min="1" max="10">
+                </div>
+            </div>
+            
+            <button type="submit">Save Settings</button>
+        </form>
+    </div>
+    
+    <script>
+        // Load current settings
+        fetch('/api/settings')
+            .then(r => r.json())
+            .then(data => {
+                if (data.weather_source) {
+                    document.getElementById('weatherSourceEnabled').checked = data.weather_source.enabled;
+                    document.getElementById('weatherSourceType').value = data.weather_source.source_type || 'aviationweather';
+                    document.getElementById('cacheSeconds').value = data.weather_source.cache_seconds;
+                    document.getElementById('metarRefreshSeconds').value = data.weather_source.metar_refresh_seconds || 60;
+                    document.getElementById('tafRefreshSeconds').value = data.weather_source.taf_refresh_seconds || 600;
+                }
+                if (data.weather_combining) {
+                    document.getElementById('combiningMode').value = data.weather_combining.mode;
+                }
+                if (data.smoothing) {
+                    document.getElementById('maxWindDirChange').value = data.smoothing.max_wind_dir_change_deg;
+                    document.getElementById('maxWindSpeedChange').value = data.smoothing.max_wind_speed_change_kt;
+                    document.getElementById('maxQNHChange').value = data.smoothing.max_qnh_change_hpa;
+                }
+                if (data.station_selection) {
+                    document.getElementById('stationRadius').value = data.station_selection.radius_nm;
+                    document.getElementById('maxStations').value = data.station_selection.max_stations;
+                }
+            });
+        
+        // Save settings
+        document.getElementById('settingsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const settings = {
+                weather_source: {
+                    enabled: document.getElementById('weatherSourceEnabled').checked,
+                    source_type: document.getElementById('weatherSourceType').value,
+                    cache_seconds: parseInt(document.getElementById('cacheSeconds').value),
+                    metar_refresh_seconds: parseInt(document.getElementById('metarRefreshSeconds').value),
+                    taf_refresh_seconds: parseInt(document.getElementById('tafRefreshSeconds').value),
+                },
+                weather_combining: {
+                    mode: document.getElementById('combiningMode').value,
+                },
+                smoothing: {
+                    max_wind_dir_change_deg: parseFloat(document.getElementById('maxWindDirChange').value),
+                    max_wind_speed_change_kt: parseFloat(document.getElementById('maxWindSpeedChange').value),
+                    max_qnh_change_hpa: parseFloat(document.getElementById('maxQNHChange').value),
+                },
+                station_selection: {
+                    radius_nm: parseFloat(document.getElementById('stationRadius').value),
+                    max_stations: parseInt(document.getElementById('maxStations').value),
+                },
+            };
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(settings),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Settings saved!');
+                } else {
+                    alert('Error saving settings');
+                }
+            });
+        });
+        
+        async function enhanceStationNames() {
+            if (!confirm('This will enhance station names using the airport database. Continue?')) {
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/data/enhance-station-names', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert(`Success! Enhanced ${data.enhanced_count} station names out of ${data.total_stations} total stations.`);
+                    // Reload page to see updated names
+                    window.location.reload();
+                } else {
+                    alert('Error enhancing station names: ' + (data.message || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+                console.error('Enhance station names error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

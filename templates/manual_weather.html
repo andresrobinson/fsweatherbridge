@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSX Weather Bridge - Manual Weather</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .nav {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .nav a {
+            color: #667eea;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .nav a:hover {
+            background: #e8ecff;
+        }
+        .content {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        @media (max-width: 1200px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+        .form-section, .preview-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .section-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #667eea;
+            margin: 0 0 20px 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+            font-size: 14px;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+            font-family: inherit;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #218838;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .metar-preview {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-bottom: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .info-box p {
+            margin: 0;
+            font-size: 13px;
+            color: #1976D2;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌦️ Manual Weather Injection</h1>
+            <p>Set weather conditions manually and inject them directly into FSX</p>
+        </div>
+        <nav class="nav">
+            <a href="/">Status</a>
+            <a href="/map">Map</a>
+            <a href="/settings">Settings</a>
+            <a href="/test-weather">Test Weather</a>
+            <a href="/manual-weather">Manual Weather</a>
+            <a href="/logs">Logs</a>
+        </nav>
+        <div class="content">
+            <div class="form-section">
+                <h2 class="section-title">Weather Conditions</h2>
+                
+                <div class="info-box">
+                    <p><strong>Note:</strong> This tool allows you to manually set weather conditions. The values will be converted to the proper METAR format and injected directly into FSX.</p>
+                </div>
+
+                <form id="weatherForm">
+                    <div class="form-group">
+                        <label>Injection Method</label>
+                        <select id="injection_method">
+                            <option value="direct">Direct Injection (Immediate)</option>
+                            <option value="station">Station-Specific (via ICAO)</option>
+                            <option value="global">Global Weather (GLOB)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="station_icao_group" style="display: none;">
+                        <label for="station_icao">Station ICAO Code</label>
+                        <input type="text" id="station_icao" placeholder="e.g., KJFK" maxlength="4" style="text-transform: uppercase;">
+                    </div>
+
+                    <h3 style="margin-top: 25px; margin-bottom: 15px; color: #555;">Wind</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="wind_dir">Direction (0-360°)</label>
+                            <input type="number" id="wind_dir" min="0" max="360" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="wind_speed_kt">Speed (knots)</label>
+                            <input type="number" id="wind_speed_kt" min="0" step="0.1" value="0">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="wind_gust_kt">Gust Speed (knots, optional)</label>
+                        <input type="number" id="wind_gust_kt" min="0" step="0.1" value="">
+                    </div>
+
+                    <h3 style="margin-top: 25px; margin-bottom: 15px; color: #555;">Clouds</h3>
+                    <div class="form-group">
+                        <label for="cloud_coverage">Coverage</label>
+                        <select id="cloud_coverage">
+                            <option value="SKC">SKC - Sky Clear</option>
+                            <option value="FEW">FEW - Few (1-2 octas)</option>
+                            <option value="SCT">SCT - Scattered (3-4 octas)</option>
+                            <option value="BKN">BKN - Broken (5-7 octas)</option>
+                            <option value="OVC" selected>OVC - Overcast (8 octas)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cloud_base_ft">Base Altitude (feet)</label>
+                        <input type="number" id="cloud_base_ft" min="0" value="0">
+                    </div>
+
+                    <h3 style="margin-top: 25px; margin-bottom: 15px; color: #555;">Visibility & Conditions</h3>
+                    <div class="form-group">
+                        <label for="visibility_nm">Visibility (nautical miles)</label>
+                        <input type="number" id="visibility_nm" min="0" step="0.1" value="10.0">
+                    </div>
+                    <div class="form-group">
+                        <label for="weather_tokens">Weather Phenomena (comma-separated, e.g., RA,SN,FG)</label>
+                        <input type="text" id="weather_tokens" placeholder="RA, SN, FG">
+                    </div>
+
+                    <h3 style="margin-top: 25px; margin-bottom: 15px; color: #555;">Temperature & Pressure</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="temperature_c">Temperature (°C)</label>
+                            <input type="number" id="temperature_c" step="0.1" value="15.0">
+                        </div>
+                        <div class="form-group">
+                            <label for="dewpoint_c">Dewpoint (°C)</label>
+                            <input type="number" id="dewpoint_c" step="0.1" value="10.0">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="qnh_hpa">QNH Pressure (hPa)</label>
+                        <input type="number" id="qnh_hpa" min="870" max="1080" step="0.01" value="1013.25">
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-primary" id="injectBtn">Inject Weather</button>
+                        <button type="button" class="btn btn-secondary" id="previewBtn">Preview METAR</button>
+                        <button type="button" class="btn btn-secondary" id="clearBtn">Clear Form</button>
+                    </div>
+                </form>
+
+                <div id="result" class="result"></div>
+            </div>
+
+            <div class="preview-section">
+                <h2 class="section-title">METAR Preview</h2>
+                <div class="info-box">
+                    <p><strong>Format:</strong> The weather conditions are automatically converted to SimConnect-compatible METAR format. This preview shows what will be sent to FSX.</p>
+                </div>
+                <div id="metarPreview" class="metar-preview">GLOB 010000Z 00000KT 9999 SKC 15/10 Q1013</div>
+                
+                <h3 class="section-title" style="margin-top: 30px;">Raw METAR (Optional)</h3>
+                <div class="info-box">
+                    <p><strong>Advanced:</strong> You can also paste a raw METAR string here to inject directly. This bypasses the form fields.</p>
+                </div>
+                <div class="form-group">
+                    <label for="raw_metar">Raw METAR String</label>
+                    <textarea id="raw_metar" placeholder="e.g., GLOB 171844Z 09050KT 9999 SKC 15/10 Q1013 or SBGR METAR 171844Z 09050KT 1600 FG OVC005 15/10 Q1013"></textarea>
+                </div>
+                <div class="button-group">
+                    <button type="button" class="btn btn-success" id="injectRawBtn">Inject Raw METAR</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('weatherForm');
+        const injectionMethod = document.getElementById('injection_method');
+        const stationIcaoGroup = document.getElementById('station_icao_group');
+        const stationIcao = document.getElementById('station_icao');
+        const metarPreview = document.getElementById('metarPreview');
+        const resultDiv = document.getElementById('result');
+        const injectBtn = document.getElementById('injectBtn');
+        const previewBtn = document.getElementById('previewBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const injectRawBtn = document.getElementById('injectRawBtn');
+
+        // Show/hide station ICAO based on injection method
+        injectionMethod.addEventListener('change', function() {
+            if (this.value === 'station') {
+                stationIcaoGroup.style.display = 'block';
+            } else {
+                stationIcaoGroup.style.display = 'none';
+            }
+            updatePreview();
+        });
+
+        // Auto-uppercase station ICAO
+        stationIcao.addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+
+        // Update preview when form changes
+        form.addEventListener('input', updatePreview);
+        form.addEventListener('change', updatePreview);
+
+        function updatePreview() {
+            const method = injectionMethod.value;
+            const windDir = parseInt(document.getElementById('wind_dir').value) || 0;
+            const windSpeed = parseFloat(document.getElementById('wind_speed_kt').value) || 0;
+            const windGust = parseFloat(document.getElementById('wind_gust_kt').value) || null;
+            const cloudCoverage = document.getElementById('cloud_coverage').value;
+            const cloudBase = parseInt(document.getElementById('cloud_base_ft').value) || 0;
+            const visibility = parseFloat(document.getElementById('visibility_nm').value) || 10.0;
+            const temp = parseFloat(document.getElementById('temperature_c').value) || 15.0;
+            const dewpoint = parseFloat(document.getElementById('dewpoint_c').value) || 10.0;
+            const qnh = parseFloat(document.getElementById('qnh_hpa').value) || 1013.25;
+            const weatherTokens = document.getElementById('weather_tokens').value;
+
+            // Generate METAR preview
+            const now = new Date();
+            const dateStr = String(now.getUTCDate()).padStart(2, '0');
+            const hourStr = String(now.getUTCHours()).padStart(2, '0');
+            const minStr = String(now.getUTCMinutes()).padStart(2, '0');
+            const timeStr = `${dateStr}${hourStr}${minStr}Z`;
+
+            let metar = '';
+            if (method === 'station' && stationIcao.value) {
+                metar = `${stationIcao.value.toUpperCase()} METAR ${timeStr} `;
+            } else if (method === 'global') {
+                metar = `GLOB ${timeStr} `;
+            } else {
+                metar = `GLOB ${timeStr} `;
+            }
+
+            // Wind
+            if (windSpeed === 0) {
+                metar += '00000KT ';
+            } else {
+                const dirStr = String(Math.round(windDir) % 360).padStart(3, '0');
+                const speedStr = String(Math.round(windSpeed)).padStart(2, '0');
+                if (windGust && windGust > windSpeed) {
+                    const gustStr = String(Math.round(windGust)).padStart(2, '0');
+                    metar += `${dirStr}${speedStr}G${gustStr}KT `;
+                } else {
+                    metar += `${dirStr}${speedStr}KT `;
+                }
+            }
+
+            // Visibility
+            if (visibility >= 10) {
+                metar += '9999 ';
+            } else {
+                const visM = Math.round(visibility * 1852);
+                if (visM >= 8000) metar += '8000 ';
+                else if (visM >= 5000) metar += '5000 ';
+                else if (visM >= 3000) metar += '3000 ';
+                else if (visM >= 1600) metar += '1600 ';
+                else if (visM >= 800) metar += '0800 ';
+                else metar += '0400 ';
+            }
+
+            // Weather tokens
+            if (weatherTokens.trim()) {
+                const tokens = weatherTokens.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+                if (tokens.length > 0) {
+                    metar += tokens.slice(0, 2).join('') + ' ';
+                }
+            }
+
+            // Clouds (OVC000/BKN000 often invalid in FSX; use min 005 = 500 ft)
+            if (cloudCoverage === 'SKC') {
+                metar += 'SKC ';
+            } else {
+                const base100 = Math.max(5, Math.round(cloudBase / 100));
+                metar += `${cloudCoverage}${String(base100).padStart(3, '0')} `;
+            }
+
+            // Temperature/Dewpoint
+            const tempStr = String(Math.round(temp)).padStart(2, '0');
+            const dewpStr = String(Math.round(dewpoint)).padStart(2, '0');
+            metar += `${tempStr}/${dewpStr} `;
+
+            // QNH
+            metar += `Q${Math.round(qnh)}`;
+
+            metarPreview.textContent = metar;
+        }
+
+        async function injectWeather(useRaw = false) {
+            injectBtn.disabled = true;
+            injectRawBtn.disabled = true;
+            resultDiv.style.display = 'none';
+
+            try {
+                let response;
+                if (useRaw) {
+                    const rawMetar = document.getElementById('raw_metar').value.trim();
+                    if (!rawMetar) {
+                        throw new Error('Please enter a raw METAR string');
+                    }
+                    response = await fetch('/api/weather/inject-raw', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ metar: rawMetar }),
+                    });
+                } else {
+                    const params = new URLSearchParams();
+                    params.append('wind_dir', document.getElementById('wind_dir').value || '0');
+                    params.append('wind_speed_kt', document.getElementById('wind_speed_kt').value || '0');
+                    params.append('cloud_coverage', document.getElementById('cloud_coverage').value);
+                    params.append('cloud_base_ft', document.getElementById('cloud_base_ft').value || '0');
+                    params.append('visibility_nm', document.getElementById('visibility_nm').value || '10.0');
+                    params.append('temperature_c', document.getElementById('temperature_c').value || '15.0');
+                    params.append('qnh_hpa', document.getElementById('qnh_hpa').value || '1013.25');
+                    if (injectionMethod.value === 'station' && stationIcao.value) {
+                        params.append('station_icao', stationIcao.value.toUpperCase());
+                    }
+                    response = await fetch('/api/weather/test-inject?' + params.toString(), { method: 'POST' });
+                }
+
+                const data = await response.json();
+                
+                resultDiv.className = 'result ' + (data.success ? 'success' : 'error');
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `<strong>${data.success ? '✓ Success!' : '✗ Failed'}</strong><br>${data.message || ''}`;
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `<strong>Error</strong><br>${error.message}`;
+            } finally {
+                injectBtn.disabled = false;
+                injectRawBtn.disabled = false;
+            }
+        }
+
+        injectBtn.addEventListener('click', () => injectWeather(false));
+        injectRawBtn.addEventListener('click', () => injectWeather(true));
+        previewBtn.addEventListener('click', updatePreview);
+        clearBtn.addEventListener('click', () => {
+            form.reset();
+            document.getElementById('wind_dir').value = '0';
+            document.getElementById('wind_speed_kt').value = '0';
+            document.getElementById('cloud_coverage').value = 'OVC';
+            document.getElementById('cloud_base_ft').value = '0';
+            document.getElementById('visibility_nm').value = '10.0';
+            document.getElementById('temperature_c').value = '15.0';
+            document.getElementById('dewpoint_c').value = '10.0';
+            document.getElementById('qnh_hpa').value = '1013.25';
+            updatePreview();
+        });
+
+        // Initial preview
+        updatePreview();
+    </script>
+</body>
+</html>

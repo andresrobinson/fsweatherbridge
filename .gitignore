@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Data files (user-specific, can be regenerated)
+data/
+*.json
+!requirements.txt
+
+# Configuration (user-specific)
+python_config.txt
+config.json
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# FSUIPC build artifacts (keep source, exclude build)
+fsuipc-master/build/
+fsuipc-master/*.obj
+fsuipc-master/*.exp
+fsuipc-master/*.lib
+fsuipc-master/*.pdb
+
+# Keep fsuipc source and compiled .pyd files (needed for runtime)
+!fsuipc-master/fsuipc/
+!fsuipc-master/pyuipc*.pyd
+!fsuipc-master/LICENSE
+!fsuipc-master/pyuipc-stubs/
+
+# User-specific config directory
+.fsweatherbridge/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp

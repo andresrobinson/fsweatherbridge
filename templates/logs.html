@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSX Weather Bridge - Logs</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            padding: 0;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        nav {
+            background: #252526;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        nav a {
+            margin-right: 20px;
+            text-decoration: none;
+            color: #4ec9b0;
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        nav a:hover {
+            background: #2d2d30;
+        }
+        .header {
+            background: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            margin: 0;
+            color: #d4d4d4;
+        }
+        .controls {
+            background: #252526;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        #logContainer {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 70vh;
+            overflow-y: auto;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            border: 1px solid #3e3e42;
+        }
+        .log-entry {
+            margin: 3px 0;
+            padding: 4px 8px;
+            border-left: 3px solid transparent;
+            word-wrap: break-word;
+        }
+        .log-entry.error {
+            color: #f48771;
+            border-left-color: #f48771;
+            background: rgba(244, 135, 113, 0.1);
+        }
+        .log-entry.warning {
+            color: #cca700;
+            border-left-color: #cca700;
+            background: rgba(204, 167, 0, 0.1);
+        }
+        .log-entry.info {
+            color: #4ec9b0;
+            border-left-color: #4ec9b0;
+        }
+        .log-entry.debug {
+            color: #6b7280;
+        }
+        .log-timestamp {
+            color: #858585;
+            margin-right: 10px;
+        }
+        .log-level {
+            font-weight: bold;
+            margin-right: 10px;
+            min-width: 60px;
+            display: inline-block;
+        }
+        .auto-scroll {
+            margin-left: auto;
+        }
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a href="/">Status</a>
+            <a href="/map">Map</a>
+            <a href="/settings">Settings</a>
+            <a href="/stored-weather">Stored Weather</a>
+            <a href="/logs">Logs</a>
+        </nav>
+        
+        <div class="header">
+            <h1>Application Logs</h1>
+        </div>
+        
+        <div class="controls">
+            <button onclick="refreshLogs()">Refresh</button>
+            <button onclick="clearLogs()">Clear</button>
+            <div class="auto-scroll">
+                <label>
+                    <input type="checkbox" id="autoScroll" checked>
+                    Auto-scroll
+                </label>
+            </div>
+        </div>
+        
+        <div id="logContainer"></div>
+    </div>
+    
+    <script>
+        const logContainer = document.getElementById('logContainer');
+        let autoScroll = true;
+        
+        document.getElementById('autoScroll').addEventListener('change', function(e) {
+            autoScroll = e.target.checked;
+            if (autoScroll) {
+                scrollToBottom();
+            }
+        });
+        
+        function scrollToBottom() {
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+        
+        function addLogEntry(log) {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${log.level.toLowerCase()}`;
+            
+            const timestamp = new Date(log.timestamp);
+            const timeStr = timestamp.toLocaleTimeString();
+            
+            entry.innerHTML = `
+                <span class="log-timestamp">[${timeStr}]</span>
+                <span class="log-level">${log.level}</span>
+                <span>${escapeHtml(log.message)}</span>
+            `;
+            
+            logContainer.appendChild(entry);
+            
+            if (autoScroll) {
+                scrollToBottom();
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function refreshLogs() {
+            fetch('/api/logs?limit=500')
+                .then(r => r.json())
+                .then(data => {
+                    logContainer.innerHTML = '';
+                    data.logs.forEach(log => addLogEntry(log));
+                })
+                .catch(err => {
+                    console.error('Error fetching logs:', err);
+                });
+        }
+        
+        function clearLogs() {
+            logContainer.innerHTML = '';
+        }
+        
+        // WebSocket for live log updates
+        const ws = new WebSocket('ws://localhost:8080/ws');
+        
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'log') {
+                addLogEntry(data.log);
+            }
+        };
+        
+        // Initial load
+        refreshLogs();
+        
+        // Auto-refresh every 5 seconds
+        setInterval(refreshLogs, 5000);
+    </script>
+</body>
+</html>

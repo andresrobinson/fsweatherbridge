@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSX Weather Bridge - Stored Weather</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        nav {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        nav a {
+            margin-right: 20px;
+            text-decoration: none;
+            color: #667eea;
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        nav a:hover {
+            background: #f0f0f0;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin: 0;
+            color: #333;
+            font-size: 28px;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .controls input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 200px;
+        }
+        .controls .stats {
+            color: #666;
+            font-size: 14px;
+        }
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        thead {
+            background: #f9fafb;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e5e7eb;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        th:hover {
+            background: #f3f4f6;
+        }
+        th.sortable::after {
+            content: ' ↕';
+            opacity: 0.3;
+            font-size: 12px;
+        }
+        th.sort-asc::after {
+            content: ' ↑';
+            opacity: 1;
+            color: #667eea;
+        }
+        th.sort-desc::after {
+            content: ' ↓';
+            opacity: 1;
+            color: #667eea;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+            vertical-align: top;
+        }
+        tbody tr:hover {
+            background: #f9fafb;
+        }
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .icao {
+            font-weight: 600;
+            color: #667eea;
+            font-family: monospace;
+        }
+        .station-name {
+            color: #333;
+        }
+        .country {
+            color: #6b7280;
+            font-size: 12px;
+        }
+        .metar, .taf {
+            font-family: monospace;
+            font-size: 11px;
+            background: #f9fafb;
+            padding: 8px;
+            border-radius: 4px;
+            word-break: break-all;
+            max-width: 500px;
+        }
+        .metar {
+            color: #059669;
+        }
+        .taf {
+            color: #0284c7;
+        }
+        .age {
+            color: #6b7280;
+            font-size: 12px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .badge-metar {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .badge-taf {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .badge-none {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a href="/">Status</a>
+            <a href="/map">Map</a>
+            <a href="/settings">Settings</a>
+            <a href="/stored-weather">Stored Weather</a>
+            <a href="/logs">Logs</a>
+        </nav>
+        
+        <div class="header">
+            <h1>Stored Weather Data</h1>
+        </div>
+        
+        <div class="controls">
+            <input type="text" id="searchInput" placeholder="Search by ICAO, station name, or country..." oninput="filterTable()">
+            <div class="stats" id="stats">Loading...</div>
+            <button onclick="refreshData()" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 500;">Refresh</button>
+        </div>
+        
+        <div class="table-container">
+            <table id="weatherTable">
+                <thead>
+                    <tr>
+                        <th class="sortable" onclick="sortTable(0)">ICAO</th>
+                        <th class="sortable" onclick="sortTable(1)">Station Name</th>
+                        <th class="sortable" onclick="sortTable(2)">Country</th>
+                        <th class="sortable" onclick="sortTable(3)">METAR</th>
+                        <th class="sortable" onclick="sortTable(4)">TAF</th>
+                        <th class="sortable" onclick="sortTable(5)">METAR Age</th>
+                        <th class="sortable" onclick="sortTable(6)">TAF Age</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr>
+                        <td colspan="7" class="loading">Loading weather data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        let allWeatherData = [];
+        let filteredData = [];
+        let sortColumn = -1;
+        let sortDirection = 1; // 1 for ascending, -1 for descending
+        
+        async function loadWeatherData() {
+            try {
+                // Check localStorage cache first (30 second TTL)
+                const cachedData = localStorage.getItem('stored_weather_cache');
+                const cachedTime = localStorage.getItem('stored_weather_cache_time');
+                const cacheMaxAge = 30 * 1000; // 30 seconds in milliseconds
+                
+                let data;
+                if (cachedData && cachedTime && (Date.now() - parseInt(cachedTime)) < cacheMaxAge) {
+                    // Use cached data
+                    console.log('Using cached stored weather data');
+                    data = JSON.parse(cachedData);
+                } else {
+                    // Fetch fresh data
+                    const res = await fetch('/api/weather/stored');
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}`);
+                    }
+                    data = await res.json();
+                    
+                    // Cache the data
+                    localStorage.setItem('stored_weather_cache', JSON.stringify(data));
+                    localStorage.setItem('stored_weather_cache_time', Date.now().toString());
+                }
+                
+                if (data.weather_data && data.weather_data.length > 0) {
+                    allWeatherData = data.weather_data;
+                    filteredData = [...allWeatherData];
+                    renderTable();
+                    updateStats();
+                } else {
+                    document.getElementById('tableBody').innerHTML = `
+                        <tr>
+                            <td colspan="7" class="empty">No weather data stored in memory</td>
+                        </tr>
+                    `;
+                    document.getElementById('stats').textContent = '0 stations';
+                }
+            } catch (error) {
+                console.error('Error loading weather data:', error);
+                document.getElementById('tableBody').innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty">Error loading weather data: ${error.message}</td>
+                    </tr>
+                `;
+            }
+        }
+        
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            
+            if (filteredData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty">No stations match your search</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = filteredData.map(w => {
+                const metarAge = w.metar ? formatAge(w.metar.age_seconds) : '-';
+                const tafAge = w.taf ? formatAge(w.taf.age_seconds) : '-';
+                const metarBadge = w.metar ? '<span class="badge badge-metar">Available</span>' : '<span class="badge badge-none">None</span>';
+                const tafBadge = w.taf ? '<span class="badge badge-taf">Available</span>' : '<span class="badge badge-none">None</span>';
+                const metarText = w.metar ? `<div class="metar">${escapeHtml(w.metar.raw || 'N/A')}</div>` : '<div class="age">-</div>';
+                const tafText = w.taf ? `<div class="taf">${escapeHtml(w.taf.raw || 'N/A')}</div>` : '<div class="age">-</div>';
+                
+                return `
+                    <tr>
+                        <td><span class="icao">${escapeHtml(w.icao || 'N/A')}</span></td>
+                        <td>
+                            <div class="station-name">${escapeHtml(w.station_name || 'Unknown')}</div>
+                        </td>
+                        <td><div class="country">${escapeHtml(w.country || 'Unknown')}</div></td>
+                        <td>
+                            ${metarBadge}
+                            ${metarText}
+                        </td>
+                        <td>
+                            ${tafBadge}
+                            ${tafText}
+                        </td>
+                        <td><div class="age">${metarAge}</div></td>
+                        <td><div class="age">${tafAge}</div></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function formatAge(seconds) {
+            if (seconds < 60) {
+                return `${Math.round(seconds)}s`;
+            } else if (seconds < 3600) {
+                return `${Math.round(seconds / 60)}m`;
+            } else if (seconds < 86400) {
+                return `${Math.round(seconds / 3600)}h`;
+            } else {
+                return `${Math.round(seconds / 86400)}d`;
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function filterTable() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            
+            if (!searchTerm) {
+                filteredData = [...allWeatherData];
+            } else {
+                filteredData = allWeatherData.filter(w => {
+                    const icao = (w.icao || '').toLowerCase();
+                    const name = (w.station_name || '').toLowerCase();
+                    const country = (w.country || '').toLowerCase();
+                    const metar = (w.metar?.raw || '').toLowerCase();
+                    const taf = (w.taf?.raw || '').toLowerCase();
+                    
+                    return icao.includes(searchTerm) || 
+                           name.includes(searchTerm) || 
+                           country.includes(searchTerm) ||
+                           metar.includes(searchTerm) ||
+                           taf.includes(searchTerm);
+                });
+            }
+            
+            // Re-apply sorting if active
+            if (sortColumn >= 0) {
+                sortTable(sortColumn, true);
+            } else {
+                renderTable();
+            }
+            updateStats();
+        }
+        
+        function sortTable(column, preserveDirection = false) {
+            if (!preserveDirection) {
+                if (sortColumn === column) {
+                    sortDirection *= -1;
+                } else {
+                    sortColumn = column;
+                    sortDirection = 1;
+                }
+            }
+            
+            // Update header classes
+            const headers = document.querySelectorAll('th.sortable');
+            headers.forEach((h, i) => {
+                h.classList.remove('sort-asc', 'sort-desc');
+                if (i === column) {
+                    h.classList.add(sortDirection === 1 ? 'sort-asc' : 'sort-desc');
+                }
+            });
+            
+            filteredData.sort((a, b) => {
+                let aVal, bVal;
+                
+                switch(column) {
+                    case 0: // ICAO
+                        aVal = (a.icao || '').toUpperCase();
+                        bVal = (b.icao || '').toUpperCase();
+                        break;
+                    case 1: // Station Name
+                        aVal = (a.station_name || '').toLowerCase();
+                        bVal = (b.station_name || '').toLowerCase();
+                        break;
+                    case 2: // Country
+                        aVal = (a.country || '').toLowerCase();
+                        bVal = (b.country || '').toLowerCase();
+                        break;
+                    case 3: // METAR
+                        aVal = a.metar ? 1 : 0;
+                        bVal = b.metar ? 1 : 0;
+                        break;
+                    case 4: // TAF
+                        aVal = a.taf ? 1 : 0;
+                        bVal = b.taf ? 1 : 0;
+                        break;
+                    case 5: // METAR Age
+                        aVal = a.metar ? (a.metar.age_seconds || 0) : Infinity;
+                        bVal = b.metar ? (b.metar.age_seconds || 0) : Infinity;
+                        break;
+                    case 6: // TAF Age
+                        aVal = a.taf ? (a.taf.age_seconds || 0) : Infinity;
+                        bVal = b.taf ? (b.taf.age_seconds || 0) : Infinity;
+                        break;
+                    default:
+                        return 0;
+                }
+                
+                if (aVal < bVal) return -1 * sortDirection;
+                if (aVal > bVal) return 1 * sortDirection;
+                return 0;
+            });
+            
+            renderTable();
+        }
+        
+        function updateStats() {
+            const total = allWeatherData.length;
+            const filtered = filteredData.length;
+            const withMetar = filteredData.filter(w => w.metar).length;
+            const withTaf = filteredData.filter(w => w.taf).length;
+            
+            let statsText = `${filtered} of ${total} stations`;
+            if (filtered < total) {
+                statsText += ` (filtered)`;
+            }
+            statsText += ` | ${withMetar} with METAR | ${withTaf} with TAF`;
+            document.getElementById('stats').textContent = statsText;
+        }
+        
+        async function refreshData() {
+            document.getElementById('tableBody').innerHTML = `
+                <tr>
+                    <td colspan="7" class="loading">Refreshing data...</td>
+                </tr>
+            `;
+            await loadWeatherData();
+        }
+        
+        // Load data on page load
+        loadWeatherData();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadWeatherData, 30000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSX Weather Bridge - Weather Injection Test</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .nav {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .nav a {
+            color: #667eea;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .nav a:hover {
+            background: #e8ecff;
+        }
+        .content {
+            padding: 30px;
+        }
+        .test-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        .form-group input,
+        .form-group select {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .preset-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .preset-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .preset-btn:hover {
+            background: #5568d3;
+        }
+        .preset-btn.secondary {
+            background: #6c757d;
+        }
+        .preset-btn.secondary:hover {
+            background: #5a6268;
+        }
+        .submit-btn {
+            grid-column: 1 / -1;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .result-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .section-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #667eea;
+            margin: 30px 0 15px 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .section-title:first-of-type {
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌦️ Weather Injection Test</h1>
+            <p>Test weather injection into FSX with custom parameters</p>
+        </div>
+        <nav class="nav">
+            <a href="/">Status</a>
+            <a href="/map">Map</a>
+            <a href="/settings">Settings</a>
+            <a href="/logs">Logs</a>
+            <a href="/test-weather">Test Weather</a>
+        </nav>
+        <div class="content">
+            <div class="preset-buttons">
+                <button class="preset-btn" onclick="loadPreset('overcast')">Overcast 0-10000ft, 30kt Wind</button>
+                <button class="preset-btn" onclick="loadPreset('clear')">Clear Sky</button>
+                <button class="preset-btn" onclick="loadPreset('scattered')">Scattered Clouds</button>
+                <button class="preset-btn" onclick="loadPreset('broken')">Broken Clouds</button>
+                <button class="preset-btn secondary" onclick="resetForm()">Reset</button>
+            </div>
+
+            <form id="testForm" class="test-form">
+                <div class="section-title">Wind Conditions</div>
+                
+                <div class="form-group">
+                    <label for="wind_dir">Wind Direction (degrees, 0-360)</label>
+                    <input type="number" id="wind_dir" name="wind_dir" min="0" max="360" value="0" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="wind_speed_kt">Wind Speed (knots)</label>
+                    <input type="number" id="wind_speed_kt" name="wind_speed_kt" min="0" step="0.1" value="30.0" required>
+                </div>
+
+                <div class="section-title">Cloud Conditions</div>
+                
+                <div class="form-group">
+                    <label for="cloud_coverage">Cloud Coverage</label>
+                    <select id="cloud_coverage" name="cloud_coverage" required>
+                        <option value="SKC">SKC - Sky Clear</option>
+                        <option value="FEW">FEW - Few (1-2 octas)</option>
+                        <option value="SCT">SCT - Scattered (3-4 octas)</option>
+                        <option value="BKN">BKN - Broken (5-7 octas)</option>
+                        <option value="OVC" selected>OVC - Overcast (8 octas)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="cloud_base_ft">Cloud Base (feet)</label>
+                    <input type="number" id="cloud_base_ft" name="cloud_base_ft" min="0" value="0" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="cloud_top_ft">Cloud Top (feet, for reference)</label>
+                    <input type="number" id="cloud_top_ft" name="cloud_top_ft" min="0" value="10000">
+                </div>
+
+                <div class="section-title">Other Conditions</div>
+                
+                <div class="form-group">
+                    <label for="visibility_nm">Visibility (nautical miles)</label>
+                    <input type="number" id="visibility_nm" name="visibility_nm" min="0" step="0.1" value="10.0" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="temperature_c">Temperature (°C)</label>
+                    <input type="number" id="temperature_c" name="temperature_c" step="0.1" value="15.0" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="qnh_hpa">QNH Pressure (hPa)</label>
+                    <input type="number" id="qnh_hpa" name="qnh_hpa" min="870" max="1080" step="0.01" value="1013.25" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="station_icao">Station ICAO (optional, for station-specific injection)</label>
+                    <input type="text" id="station_icao" name="station_icao" placeholder="e.g., KJFK" maxlength="4" style="text-transform: uppercase;">
+                </div>
+
+                <button type="submit" class="submit-btn" id="submitBtn">Inject Weather</button>
+            </form>
+
+            <div id="result" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('testForm');
+        const resultDiv = document.getElementById('result');
+        const submitBtn = document.getElementById('submitBtn');
+
+        const presets = {
+            overcast: {
+                wind_dir: 0,
+                wind_speed_kt: 30.0,
+                cloud_coverage: 'OVC',
+                cloud_base_ft: 0,
+                cloud_top_ft: 10000,
+                visibility_nm: 10.0,
+                temperature_c: 15.0,
+                qnh_hpa: 1013.25,
+                station_icao: ''
+            },
+            clear: {
+                wind_dir: 0,
+                wind_speed_kt: 5.0,
+                cloud_coverage: 'SKC',
+                cloud_base_ft: 0,
+                cloud_top_ft: 0,
+                visibility_nm: 10.0,
+                temperature_c: 20.0,
+                qnh_hpa: 1013.25,
+                station_icao: ''
+            },
+            scattered: {
+                wind_dir: 270,
+                wind_speed_kt: 15.0,
+                cloud_coverage: 'SCT',
+                cloud_base_ft: 3000,
+                cloud_top_ft: 8000,
+                visibility_nm: 10.0,
+                temperature_c: 18.0,
+                qnh_hpa: 1013.25,
+                station_icao: ''
+            },
+            broken: {
+                wind_dir: 180,
+                wind_speed_kt: 20.0,
+                cloud_coverage: 'BKN',
+                cloud_base_ft: 2000,
+                cloud_top_ft: 6000,
+                visibility_nm: 5.0,
+                temperature_c: 16.0,
+                qnh_hpa: 1013.25,
+                station_icao: ''
+            }
+        };
+
+        function loadPreset(presetName) {
+            const preset = presets[presetName];
+            if (!preset) return;
+            
+            Object.keys(preset).forEach(key => {
+                const input = document.getElementById(key);
+                if (input) {
+                    input.value = preset[key];
+                }
+            });
+        }
+
+        function resetForm() {
+            loadPreset('overcast');
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Injecting...';
+            resultDiv.style.display = 'none';
+
+            const formData = new FormData(form);
+            const params = new URLSearchParams();
+            
+            for (const [key, value] of formData.entries()) {
+                if (value) {
+                    params.append(key, value);
+                }
+            }
+
+            try {
+                const response = await fetch(`/api/weather/test-inject?${params.toString()}`, {
+                    method: 'POST',
+                });
+
+                const data = await response.json();
+                
+                resultDiv.className = 'result ' + (data.success ? 'success' : 'error');
+                resultDiv.style.display = 'block';
+                
+                let html = `<strong>${data.success ? '✓ Success!' : '✗ Failed'}</strong><br>${data.message || ''}`;
+                
+                if (data.weather) {
+                    html += '<div class="result-info">' + JSON.stringify(data.weather, null, 2) + '</div>';
+                }
+                
+                resultDiv.innerHTML = html;
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `<strong>Error</strong><br>${error.message}`;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Inject Weather';
+            }
+        });
+
+        // Auto-uppercase station ICAO
+        document.getElementById('station_icao').addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+    </script>
+</body>
+</html>

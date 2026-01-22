@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSX Weather Bridge - Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        .control-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            max-width: 350px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .control-panel h3 {
+            margin-top: 0;
+            color: #667eea;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        .search-box {
+            margin: 10px 0;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        nav {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 500; /* Lower than zoom controls */
+        }
+        nav a {
+            margin-right: 15px;
+            text-decoration: none;
+            color: #667eea;
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        nav a:hover {
+            background: #f0f0f0;
+        }
+        /* Ensure zoom controls are above navigation */
+        .leaflet-control-zoom {
+            z-index: 1001 !important;
+        }
+        .station-info {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+        .station-info strong {
+            color: #333;
+        }
+        .station-info small {
+            color: #6b7280;
+            display: block;
+            margin-top: 5px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px 0;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button.secondary {
+            background: #6b7280;
+        }
+        button.secondary:hover {
+            background: #4b5563;
+        }
+        .legend {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #e5e7eb;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        /* Wind direction indicator - on map next to station */
+        .wind-marker {
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Status</a>
+        <a href="/map">Map</a>
+        <a href="/settings">Settings</a>
+        <a href="/stored-weather">Stored Weather</a>
+        <a href="/logs">Logs</a>
+    </nav>
+    
+    <div id="map"></div>
+    
+    <div class="control-panel">
+        <h3>Weather Stations</h3>
+        <div id="stationInfo">
+            <div class="loading">Loading stations...</div>
+        </div>
+        <div class="search-box">
+            <input type="text" id="stationSearch" placeholder="Search station by ICAO (e.g., KORD)" 
+                   onkeypress="if(event.key === 'Enter') searchStation()">
+            <button onclick="searchStation()" style="width: 100%; margin-top: 5px;">Search & Center</button>
+        </div>
+        <button onclick="centerOnAircraft()">Center on Aircraft</button>
+        <button onclick="toggleStationsWithoutWeather()" id="toggleBtn" class="secondary">Hide Stations Without Weather</button>
+        <button onclick="refreshStations()">Refresh Stations</button>
+        <div class="legend">
+            <h4>Legend</h4>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ef4444;"></div>
+                <span>Aircraft</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #667eea;"></div>
+                <span>Selected Station</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #10b981;"></div>
+                <span>Station with Weather (METAR/TAF)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #6b7280;"></div>
+                <span>Station without Weather</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize map - will center on aircraft when position is available
+        const map = L.map('map').setView([0, 0], 4);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        // Store all stations data (for progressive loading)
+        let allStationsData = null;
+        let aircraftPosition = null;
+        const INITIAL_RADIUS_NM = 500; // Load stations within 500nm initially
+        
+        // Aircraft marker with custom icon
+        const aircraftIcon = L.divIcon({
+            className: 'aircraft-marker',
+            html: '<div style="background: #ef4444; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+        
+        const aircraftMarker = L.marker([0, 0], { icon: aircraftIcon }).addTo(map);
+        const stationMarkers = {};
+        const allStationMarkers = {};
+        const windMarkers = {}; // Wind direction indicators next to stations
+        const stationWeatherAvailability = {}; // Track which stations have weather
+        const stationWindData = {}; // Store wind data for stations
+        const stationCoordinates = {}; // Store station coordinates for search
+        let selectedStations = [];
+        let showStationsWithoutWeather = true; // Toggle state
+        
+        const ws = new WebSocket('ws://localhost:8080/ws');
+        
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'update') {
+                updateMap(data.data);
+            }
+        };
+        
+        // Calculate distance between two lat/lon points in nautical miles
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 3440.065; // Earth radius in nautical miles
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+        
+        function updateMap(data) {
+            // Update aircraft position
+            if (data.aircraft_state) {
+                const ac = data.aircraft_state;
+                aircraftPosition = { lat: ac.lat, lon: ac.lon };
+                aircraftMarker.setLatLng([ac.lat, ac.lon]);
+                aircraftMarker.bindPopup(`
+                    <strong>Aircraft</strong><br>
+                    Position: ${ac.lat.toFixed(4)}, ${ac.lon.toFixed(4)}<br>
+                    Altitude: ${ac.alt_ft.toFixed(0)} ft<br>
+                    Ground Speed: ${ac.gs_kt.toFixed(1)} kt<br>
+                    Heading: ${ac.heading_deg.toFixed(1)}°
+                `);
+                
+                // Center map on aircraft on first position update (if not already centered)
+                if (!map._initialCenterSet && ac.lat !== 0 && ac.lon !== 0) {
+                    map.setView([ac.lat, ac.lon], 8); // Zoom level 8 for regional view
+                    map._initialCenterSet = true;
+                    // Reload stations with distance filter now that we have aircraft position
+                    if (allStationsData) {
+                        renderStationsByDistance();
+                    }
+                }
+            }
+            
+            // Update selected stations
+            if (data.status && data.status.stations) {
+                selectedStations = data.status.stations.map(s => s.icao);
+                updateStationMarkers();
+            }
+        }
+        
+        function centerOnAircraft() {
+            const latlng = aircraftMarker.getLatLng();
+            if (latlng && latlng.lat !== 0 && latlng.lon !== 0) {
+                map.setView(latlng, map.getZoom() || 10);
+            } else {
+                alert('Aircraft position not available yet. Please wait for position update.');
+            }
+        }
+        
+        function toggleStationsWithoutWeather() {
+            showStationsWithoutWeather = !showStationsWithoutWeather;
+            const btn = document.getElementById('toggleBtn');
+            btn.textContent = showStationsWithoutWeather ? 'Hide Stations Without Weather' : 'Show Stations Without Weather';
+            updateStationVisibility();
+        }
+        
+        function updateStationVisibility() {
+            Object.keys(allStationMarkers).forEach(icao => {
+                const marker = allStationMarkers[icao];
+                const icaoUpper = icao.toUpperCase();
+                const hasWeather = stationWeatherAvailability[icaoUpper] || false;
+                
+                if (!showStationsWithoutWeather && !hasWeather) {
+                    // Hide stations without weather
+                    if (map.hasLayer(marker)) {
+                        map.removeLayer(marker);
+                    }
+                } else {
+                    // Show station
+                    if (!map.hasLayer(marker)) {
+                        marker.addTo(map);
+                    }
+                }
+            });
+        }
+        
+        function updateStationMarkers() {
+            // Update marker colors based on selection and weather availability
+            Object.keys(allStationMarkers).forEach(icao => {
+                const marker = allStationMarkers[icao];
+                const icaoUpper = icao.toUpperCase();
+                const isSelected = selectedStations.includes(icao) || selectedStations.includes(icaoUpper);
+                const hasWeather = stationWeatherAvailability[icaoUpper] || false;
+                
+                // Update visibility based on toggle
+                if (!showStationsWithoutWeather && !hasWeather) {
+                    if (map.hasLayer(marker)) {
+                        map.removeLayer(marker);
+                    }
+                    return;
+                } else {
+                    if (!map.hasLayer(marker)) {
+                        marker.addTo(map);
+                    }
+                }
+                
+                if (isSelected) {
+                    // Selected stations: blue, larger size
+                    marker.setIcon(L.divIcon({
+                        className: 'selected-station-marker',
+                        html: '<div style="background: #667eea; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    }));
+                } else if (hasWeather) {
+                    // Stations with weather: green, medium size
+                    marker.setIcon(L.divIcon({
+                        className: 'station-marker',
+                        html: '<div style="background: #10b981; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [14, 14],
+                        iconAnchor: [7, 7]
+                    }));
+                } else {
+                    // Stations without weather: gray, smaller size
+                    marker.setIcon(L.divIcon({
+                        className: 'station-marker',
+                        html: '<div style="background: #6b7280; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [12, 12],
+                        iconAnchor: [6, 6]
+                    }));
+                }
+            });
+        }
+        
+        function createWindMarkerIcon(windDir, windSpeed) {
+            if (!windDir || windSpeed === null || windSpeed === undefined) {
+                return null;
+            }
+            // Create a bigger wind direction arrow (30px) positioned next to station
+            // Wind direction: 0° = North (pointing up), so we rotate from up position
+            const rotation = windDir; // Wind direction in degrees
+            return L.divIcon({
+                className: 'wind-marker',
+                html: `<div style="transform: rotate(${rotation}deg); transform-origin: center;">
+                    <svg width="30" height="30" viewBox="0 0 30 30" style="filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));">
+                        <path d="M15 3 L18 12 L15 10 L12 12 Z" fill="#3b82f6" stroke="#1e40af" stroke-width="1"/>
+                        <circle cx="15" cy="15" r="2" fill="#3b82f6"/>
+                        <text x="15" y="26" text-anchor="middle" font-size="8" fill="#1e40af" font-weight="bold">${windSpeed}</text>
+                    </svg>
+                </div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+        }
+        
+        function createWindIcon(windDir, windSpeed) {
+            if (!windDir || windSpeed === null || windSpeed === undefined) {
+                return '';
+            }
+            // Create a wind direction arrow using SVG for better visibility (for popup)
+            const rotation = windDir;
+            return `<span style="display: inline-block; transform: rotate(${rotation}deg); transform-origin: center; margin-left: 5px;" title="Wind: ${windDir}°/${windSpeed}kt">
+                <svg width="16" height="16" viewBox="0 0 16 16" style="vertical-align: middle;">
+                    <path d="M8 2 L10 6 L8 5 L6 6 Z" fill="#3b82f6" stroke="#1e40af" stroke-width="0.5"/>
+                    <circle cx="8" cy="8" r="1" fill="#3b82f6"/>
+                </svg>
+            </span>`;
+        }
+        
+        function searchStation() {
+            const searchInput = document.getElementById('stationSearch');
+            const icao = searchInput.value.trim().toUpperCase();
+            
+            if (!icao) {
+                alert('Please enter an ICAO code');
+                return;
+            }
+            
+            // Check if we have coordinates for this station
+            if (stationCoordinates[icao]) {
+                const coords = stationCoordinates[icao];
+                map.setView([coords.lat, coords.lon], 12);
+                
+                // Open popup if marker exists (try both uppercase and original case)
+                const marker = allStationMarkers[icao] || allStationMarkers[icao.toUpperCase()] || 
+                              Object.keys(allStationMarkers).find(k => k.toUpperCase() === icao) ? 
+                              allStationMarkers[Object.keys(allStationMarkers).find(k => k.toUpperCase() === icao)] : null;
+                if (marker) {
+                    marker.openPopup();
+                }
+            } else {
+                // Try to find station via API
+                fetch(`/api/stations`)
+                    .then(r => r.json())
+                    .then(geojson => {
+                        const feature = geojson.features.find(f => f.properties.icao.toUpperCase() === icao);
+                        if (feature) {
+                            const coords = {
+                                lat: feature.geometry.coordinates[1],
+                                lon: feature.geometry.coordinates[0]
+                            };
+                            stationCoordinates[icao] = coords;
+                            map.setView([coords.lat, coords.lon], 12);
+                            
+                            // Open popup if marker exists (try multiple variations)
+                            const marker = allStationMarkers[icao] || allStationMarkers[feature.properties.icao] || 
+                                          allStationMarkers[feature.properties.icao.toUpperCase()] ||
+                                          Object.keys(allStationMarkers).find(k => k.toUpperCase() === icao) ? 
+                                          allStationMarkers[Object.keys(allStationMarkers).find(k => k.toUpperCase() === icao)] : null;
+                            if (marker) {
+                                marker.openPopup();
+                            }
+                        } else {
+                            alert(`Station ${icao} not found`);
+                        }
+                    })
+                    .catch(() => {
+                        alert(`Error searching for station ${icao}`);
+                    });
+            }
+        }
+        
+        function updateWindIndicators() {
+            // Only show wind indicators when zoomed in (zoom level >= 10)
+            const zoom = map.getZoom();
+            
+            Object.keys(windMarkers).forEach(icao => {
+                const windMarker = windMarkers[icao];
+                if (zoom >= 10 && stationWindData[icao]) {
+                    // Show wind indicator
+                    if (!map.hasLayer(windMarker)) {
+                        windMarker.addTo(map);
+                    }
+                } else {
+                    // Hide wind indicator
+                    if (map.hasLayer(windMarker)) {
+                        map.removeLayer(windMarker);
+                    }
+                }
+            });
+        }
+        
+        function loadStations() {
+            // Check localStorage cache first
+            const cachedStations = localStorage.getItem('stations_cache');
+            const cachedStationsTime = localStorage.getItem('stations_cache_time');
+            const cacheMaxAge = 5 * 60 * 1000; // 5 minutes in milliseconds
+            
+            let stationsPromise;
+            if (cachedStations && cachedStationsTime && (Date.now() - parseInt(cachedStationsTime)) < cacheMaxAge) {
+                // Use cached data
+                console.log('Using cached stations data');
+                stationsPromise = Promise.resolve(JSON.parse(cachedStations));
+            } else {
+                // Fetch fresh data
+                stationsPromise = fetch('/api/stations')
+                    .then(r => r.json())
+                    .then(data => {
+                        // Cache the data
+                        localStorage.setItem('stations_cache', JSON.stringify(data));
+                        localStorage.setItem('stations_cache_time', Date.now().toString());
+                        return data;
+                    });
+            }
+            
+            // Weather availability cache (shorter TTL - 30 seconds)
+            const cachedAvailability = localStorage.getItem('weather_availability_cache');
+            const cachedAvailabilityTime = localStorage.getItem('weather_availability_cache_time');
+            const availabilityCacheMaxAge = 30 * 1000; // 30 seconds
+            
+            let availabilityPromise;
+            if (cachedAvailability && cachedAvailabilityTime && (Date.now() - parseInt(cachedAvailabilityTime)) < availabilityCacheMaxAge) {
+                console.log('Using cached weather availability data');
+                availabilityPromise = Promise.resolve(JSON.parse(cachedAvailability));
+            } else {
+                availabilityPromise = fetch('/api/weather/availability')
+                    .then(r => r.json())
+                    .catch(() => ({}))
+                    .then(data => {
+                        localStorage.setItem('weather_availability_cache', JSON.stringify(data));
+                        localStorage.setItem('weather_availability_cache_time', Date.now().toString());
+                        return data;
+                    });
+            }
+            
+            // Fetch stations and weather availability in parallel
+            Promise.all([stationsPromise, availabilityPromise])
+                .then(([geojson, weatherAvailability]) => {
+                    // Store all stations data for progressive loading
+                    allStationsData = { geojson, weatherAvailability };
+                    
+                    // Render stations based on current zoom and aircraft position
+                    renderStationsByDistance();
+                })
+                .catch(error => {
+                    console.error('Error loading stations:', error);
+                    // Fallback: load stations without weather info
+                    fetch('/api/stations')
+                        .then(r => r.json())
+                        .then(geojson => {
+                            geojson.features.forEach(feature => {
+                                const icao = feature.properties.icao;
+                                const marker = L.marker(
+                                    [feature.geometry.coordinates[1], feature.geometry.coordinates[0]],
+                                    { icon: L.divIcon({
+                                        className: 'station-marker',
+                                        html: '<div style="background: #6b7280; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+                                        iconSize: [12, 12],
+                                        iconAnchor: [6, 6]
+                                    })}
+                                )
+                                .addTo(map)
+                                .bindPopup(`
+                                    <strong>${icao}</strong><br>
+                                    ${feature.properties.name}<br>
+                                    ${feature.properties.country}
+                                `);
+                                
+                                allStationMarkers[icao] = marker;
+                            });
+                            
+                            updateStationMarkers();
+                        });
+                });
+        }
+        
+        function renderStationsByDistance() {
+            if (!allStationsData) return;
+            
+            const { geojson, weatherAvailability } = allStationsData;
+            
+            // Clear existing markers
+            Object.values(allStationMarkers).forEach(m => map.removeLayer(m));
+            Object.keys(allStationMarkers).forEach(k => delete allStationMarkers[k]);
+            Object.values(windMarkers).forEach(m => map.removeLayer(m));
+            Object.keys(windMarkers).forEach(k => delete windMarkers[k]);
+            
+            // Determine radius based on zoom level
+            const zoom = map.getZoom();
+            let radiusNm = INITIAL_RADIUS_NM;
+            
+            // Adjust radius based on zoom level
+            if (zoom >= 10) {
+                radiusNm = 200; // Very zoomed in: 200nm
+            } else if (zoom >= 8) {
+                radiusNm = 500; // Regional: 500nm (default)
+            } else if (zoom >= 6) {
+                radiusNm = 1000; // Country/region: 1000nm
+            } else if (zoom >= 4) {
+                radiusNm = 2000; // Continental: 2000nm
+            } else {
+                radiusNm = Infinity; // World view: show all
+            }
+            
+            let stationsWithWeather = 0;
+            let stationsRendered = 0;
+            
+            // Filter and add stations based on distance from aircraft
+            geojson.features.forEach(feature => {
+                const stationLat = feature.geometry.coordinates[1];
+                const stationLon = feature.geometry.coordinates[0];
+                
+                // Calculate distance from aircraft (if available)
+                let distance = Infinity;
+                if (aircraftPosition && aircraftPosition.lat !== 0 && aircraftPosition.lon !== 0) {
+                    distance = calculateDistance(
+                        aircraftPosition.lat, aircraftPosition.lon,
+                        stationLat, stationLon
+                    );
+                }
+                
+                // Only render stations within radius (or all if no aircraft position yet)
+                if (distance <= radiusNm || !aircraftPosition || aircraftPosition.lat === 0) {
+                    stationsRendered++;
+                    const icao = feature.properties.icao;
+                    const icaoUpper = icao.toUpperCase();
+                    
+                    // Check weather availability
+                    const availability = weatherAvailability[icaoUpper] || { has_metar: false, has_taf: false, has_weather: false };
+                    const hasWeather = availability.has_weather;
+                    
+                    // Store availability for later use
+                    stationWeatherAvailability[icaoUpper] = hasWeather;
+                    
+                    if (hasWeather) {
+                        stationsWithWeather++;
+                    }
+                    
+                    // Choose marker color: green if has weather, gray if not
+                    const markerColor = hasWeather ? '#10b981' : '#6b7280';
+                    const markerSize = hasWeather ? 14 : 12;
+                    
+                    const marker = L.marker(
+                        [feature.geometry.coordinates[1], feature.geometry.coordinates[0]],
+                        { icon: L.divIcon({
+                            className: 'station-marker',
+                            html: `<div style="background: ${markerColor}; width: ${markerSize}px; height: ${markerSize}px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+                            iconSize: [markerSize, markerSize],
+                            iconAnchor: [markerSize/2, markerSize/2]
+                        })}
+                    )
+                    .addTo(map);
+                    
+                    // Set initial popup content
+                    let availabilityText = '';
+                    if (availability.has_metar && availability.has_taf) {
+                        availabilityText = '<br><small style="color: #10b981;">✓ METAR & TAF Available</small>';
+                    } else if (availability.has_metar) {
+                        availabilityText = '<br><small style="color: #10b981;">✓ METAR Available</small>';
+                    } else if (availability.has_taf) {
+                        availabilityText = '<br><small style="color: #10b981;">✓ TAF Available</small>';
+                    } else {
+                        availabilityText = '<br><small style="color: #6b7280;">No weather data</small>';
+                    }
+                    
+                    // Store coordinates for search
+                    stationCoordinates[icaoUpper] = {
+                        lat: feature.geometry.coordinates[1],
+                        lon: feature.geometry.coordinates[0]
+                    };
+                    
+                    marker.bindPopup(`
+                        <strong>${icao}</strong><br>
+                        ${feature.properties.name}<br>
+                        ${feature.properties.country}${availabilityText}<br>
+                        <small>Click to view weather details</small>
+                    `);
+                    
+                    // Fetch wind data for stations with weather (async, don't block)
+                    if (hasWeather) {
+                        fetch(`/api/weather/${icaoUpper}`)
+                            .then(r => {
+                                if (r.ok) {
+                                    return r.json();
+                                }
+                                return null;
+                            })
+                            .then(weatherData => {
+                                if (weatherData && weatherData.metar) {
+                                    const metarParsed = weatherData.metar.parsed || weatherData.metar;
+                                    if (metarParsed && metarParsed.wind_dir_deg !== null && metarParsed.wind_dir_deg !== undefined && 
+                                        metarParsed.wind_speed_kt !== null && metarParsed.wind_speed_kt !== undefined) {
+                                        const windDir = Math.round(metarParsed.wind_dir_deg);
+                                        const windSpeed = Math.round(metarParsed.wind_speed_kt);
+                                        
+                                        // Store wind data for this station
+                                        stationWindData[icaoUpper] = {
+                                            dir: windDir,
+                                            speed: windSpeed,
+                                            gust: metarParsed.wind_gust_kt
+                                        };
+                                        
+                                        // Create or update wind marker next to station
+                                        const stationLat = feature.geometry.coordinates[1];
+                                        const stationLon = feature.geometry.coordinates[0];
+                                        
+                                        // Calculate offset position (~500 meters to the right of station)
+                                        const offsetMeters = 500;
+                                        const latOffset = offsetMeters / 111320;
+                                        const lonOffset = offsetMeters / (111320 * Math.cos(stationLat * Math.PI / 180));
+                                        
+                                        const windIcon = createWindMarkerIcon(windDir, windSpeed);
+                                        if (windIcon) {
+                                            // Remove existing wind marker if any
+                                            if (windMarkers[icaoUpper]) {
+                                                map.removeLayer(windMarkers[icaoUpper]);
+                                            }
+                                            
+                                            // Create new wind marker
+                                            const windMarker = L.marker(
+                                                [stationLat, stationLon + lonOffset],
+                                                { icon: windIcon }
+                                            );
+                                            
+                                            windMarkers[icaoUpper] = windMarker;
+                                            
+                                            // Show if zoomed in
+                                            const zoom = map.getZoom();
+                                            if (zoom >= 10) {
+                                                windMarker.addTo(map);
+                                            }
+                                        }
+                                    }
+                                }
+                            })
+                            .catch(() => {
+                                // Silently fail - wind data not critical
+                            });
+                    }
+                    
+                    // Load full weather info when popup opens
+                    marker.on('popupopen', function() {
+                        fetch(`/api/weather/${icaoUpper}`)
+                            .then(r => {
+                                if (r.ok) {
+                                    return r.json();
+                                }
+                                return null;
+                            })
+                            .then(weatherData => {
+                                let weatherInfo = '<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e5e7eb;">';
+                                
+                                if (weatherData) {
+                                    // Extract wind data for display
+                                    let windInfo = '';
+                                    const zoom = map.getZoom();
+                                    
+                                    if (weatherData.metar) {
+                                        // Check both parsed and direct structure
+                                        const metarParsed = weatherData.metar.parsed || weatherData.metar;
+                                        if (metarParsed && metarParsed.wind_dir_deg !== null && metarParsed.wind_dir_deg !== undefined && 
+                                            metarParsed.wind_speed_kt !== null && metarParsed.wind_speed_kt !== undefined) {
+                                            const windDir = Math.round(metarParsed.wind_dir_deg);
+                                            const windSpeed = Math.round(metarParsed.wind_speed_kt);
+                                            const windGust = metarParsed.wind_gust_kt ? `G${Math.round(metarParsed.wind_gust_kt)}` : '';
+                                            
+                                            // Show wind direction icon when zoomed in
+                                            if (zoom >= 10) {
+                                                windInfo = `<div style="margin-bottom: 5px;"><strong>Wind:</strong> ${windDir}°/${windSpeed}${windGust}kt ${createWindIcon(windDir, windSpeed)}</div>`;
+                                            } else {
+                                                windInfo = `<div style="margin-bottom: 5px;"><strong>Wind:</strong> ${windDir}°/${windSpeed}${windGust}kt</div>`;
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Show METAR
+                                    if (weatherData.metar && weatherData.metar.raw) {
+                                        weatherInfo += windInfo;
+                                        weatherInfo += `
+                                            <div style="margin-bottom: 10px;">
+                                                <strong style="color: #667eea;">METAR:</strong><br>
+                                                <code style="background: #f9fafb; padding: 5px; border-radius: 4px; display: block; font-size: 11px; word-break: break-all;">${weatherData.metar.raw}</code>
+                                            </div>
+                                        `;
+                                    } else {
+                                        weatherInfo += '<div style="margin-bottom: 10px;"><strong style="color: #667eea;">METAR:</strong> <small style="color: #ef4444;">Not available</small></div>';
+                                    }
+                                    
+                                    // Show TAF
+                                    if (weatherData.taf && weatherData.taf.raw) {
+                                        weatherInfo += `
+                                            <div>
+                                                <strong style="color: #667eea;">TAF:</strong><br>
+                                                <code style="background: #f9fafb; padding: 5px; border-radius: 4px; display: block; font-size: 11px; word-break: break-all;">${weatherData.taf.raw}</code>
+                                            </div>
+                                        `;
+                                    } else {
+                                        weatherInfo += '<div><strong style="color: #667eea;">TAF:</strong> <small style="color: #ef4444;">Not available</small></div>';
+                                    }
+                                } else {
+                                    weatherInfo += '<div style="color: #6b7280;">Weather data not found</div>';
+                                }
+                                
+                                weatherInfo += '</div>';
+                                
+                                marker.setPopupContent(`
+                                    <strong>${icao}</strong><br>
+                                    ${feature.properties.name}<br>
+                                    ${feature.properties.country}${weatherInfo}
+                                `);
+                            })
+                            .catch(() => {
+                                marker.setPopupContent(`
+                                    <strong>${icao}</strong><br>
+                                    ${feature.properties.name}<br>
+                                    ${feature.properties.country}<br>
+                                    <small style="color: #ef4444;">Error loading weather</small>
+                                `);
+                            });
+                    });
+                    
+                    allStationMarkers[icao] = marker;
+                }
+            });
+                
+            // Update station info panel
+            const stationInfo = document.getElementById('stationInfo');
+            const totalStations = geojson.features.length;
+            const visibleCount = showStationsWithoutWeather ? stationsRendered : stationsWithWeather;
+            const radiusText = aircraftPosition && aircraftPosition.lat !== 0 
+                ? ` (within ${radiusNm === Infinity ? 'all' : radiusNm.toFixed(0) + 'nm'})`
+                : '';
+            stationInfo.innerHTML = `
+                <div style="margin-bottom: 10px;">
+                    <strong>Total Stations:</strong> ${totalStations}
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <strong>With Weather:</strong> ${stationsWithWeather} <span style="color: #10b981;">●</span>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <strong>Without Weather:</strong> ${totalStations - stationsWithWeather} <span style="color: #6b7280;">●</span>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <strong>Visible:</strong> ${visibleCount}${radiusText}
+                </div>
+                ${selectedStations.length > 0 ? `
+                    <div style="margin-bottom: 10px;">
+                        <strong>Selected:</strong> ${selectedStations.length}
+                    </div>
+                ` : ''}
+            `;
+            
+            // Update marker colors for selected stations
+            updateStationMarkers();
+        }
+        
+        function refreshStations() {
+            loadStations();
+        }
+        
+        // Update wind indicators and reload stations when zoom changes
+        map.on('zoomend', function() {
+            updateWindIndicators();
+            // Refresh popups that are open to show/hide wind indicators
+            map.eachLayer(function(layer) {
+                if (layer instanceof L.Marker && layer.isPopupOpen()) {
+                    layer.closePopup();
+                    setTimeout(function() {
+                        layer.openPopup();
+                    }, 100);
+                }
+            });
+            
+            // Re-render stations with new radius based on zoom
+            if (allStationsData) {
+                renderStationsByDistance();
+            }
+        });
+        
+        // Also update on moveend to handle panning
+        map.on('moveend', function() {
+            updateWindIndicators();
+        });
+        
+        // Load stations on page load
+        loadStations();
+        
+        // Initial status load
+        fetch('/api/status')
+            .then(r => r.json())
+            .then(data => {
+                updateMap(data);
+            });
+    </script>
+</body>
+</html>

@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSX Weather Bridge - Status</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        nav {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        nav a {
+            margin-right: 20px;
+            text-decoration: none;
+            color: #667eea;
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        nav a:hover {
+            background: #f0f0f0;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin: 0;
+            color: #333;
+            font-size: 28px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .status-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status-card h3 {
+            margin-top: 0;
+            color: #667eea;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        .status-item {
+            margin: 12px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-label {
+            font-weight: 600;
+            color: #666;
+        }
+        .status-value {
+            color: #333;
+            font-weight: 500;
+        }
+        .connected {
+            color: #10b981;
+            font-weight: 600;
+        }
+        .disconnected {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button.secondary {
+            background: #6b7280;
+        }
+        button.secondary:hover {
+            background: #4b5563;
+        }
+        button.danger {
+            background: #ef4444;
+        }
+        button.danger:hover {
+            background: #dc2626;
+        }
+        button.success {
+            background: #10b981;
+        }
+        button.success:hover {
+            background: #059669;
+        }
+        .stations-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .station-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: #f9fafb;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+        .loading {
+            color: #6b7280;
+            font-style: italic;
+        }
+        .message {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+        .message.success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+        .message.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a href="/">Status</a>
+            <a href="/map">Map</a>
+            <a href="/settings">Settings</a>
+            <a href="/stored-weather">Stored Weather</a>
+            <a href="/logs">Logs</a>
+        </nav>
+        
+        <div class="header">
+            <h1>FSX Weather Bridge - Status</h1>
+        </div>
+        
+        <div id="message" class="message"></div>
+        
+        <div class="status-grid">
+            <div class="status-card">
+                <h3>FSUIPC Connection</h3>
+                <div class="status-item">
+                    <span class="status-label">Status:</span>
+                    <span class="status-value" id="fsuipcStatus">Checking...</span>
+                </div>
+                <div class="button-group">
+                    <button class="success" onclick="fsuipcConnect()">Connect</button>
+                    <button class="secondary" onclick="fsuipcReconnect()">Reconnect</button>
+                    <button class="danger" onclick="fsuipcDisconnect()">Disconnect</button>
+                </div>
+            </div>
+            
+            <div class="status-card">
+                <h3>Aircraft State</h3>
+                <div class="status-item">
+                    <span class="status-label">Position:</span>
+                    <span class="status-value" id="aircraftPosition">N/A</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Altitude:</span>
+                    <span class="status-value" id="aircraftAltitude">N/A</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Ground Speed:</span>
+                    <span class="status-value" id="aircraftSpeed">N/A</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Heading:</span>
+                    <span class="status-value" id="aircraftHeading">N/A</span>
+                </div>
+            </div>
+            
+            <div class="status-card">
+                <h3>Weather Stations</h3>
+                <div class="stations-list" id="stationsList">
+                    <div class="loading">Loading...</div>
+                </div>
+                <div style="margin-top: 10px;">
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                        <input type="text" id="icaoLookup" placeholder="ICAO (e.g., KJFK)" style="padding: 8px; width: 120px; border: 1px solid #ddd; border-radius: 4px;" maxlength="4" pattern="[A-Za-z]{4}" title="4-letter ICAO code">
+                        <button onclick="lookupICAO()" style="padding: 8px 16px;">Lookup</button>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        <button onclick="showStoredWeather()" class="secondary" style="padding: 8px 16px; width: 100%;">Show All Stored Weather</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="status-card">
+                <h3>Weather Updates</h3>
+                <div style="margin-bottom: 10px;">
+                    <small style="color: #666;">Weather data is stored in memory only (lost on restart)</small>
+                </div>
+                <div id="weatherUpdates">
+                    <div class="loading">No updates yet</div>
+                </div>
+            </div>
+            
+            <div class="status-card">
+                <h3>Weather Control</h3>
+                <div class="status-item">
+                    <span class="status-label">Last Update:</span>
+                    <span class="status-value" id="lastUpdate">N/A</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Injection Status:</span>
+                    <span class="status-value" id="injectionStatus">Unknown</span>
+                </div>
+                <div class="button-group">
+                    <button onclick="forceWeatherDownload()">Download Weather</button>
+                    <button onclick="forceWeatherInjection()">Inject Weather</button>
+                    <button class="secondary" onclick="triggerUpdate()">Full Update</button>
+                </div>
+            </div>
+            
+            <div class="status-card">
+                <h3>Data Statistics</h3>
+                <div class="status-item">
+                    <span class="status-label">Stations Loaded:</span>
+                    <span class="status-value" id="stationsLoaded">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Stations File Age:</span>
+                    <span class="status-value" id="stationsFileAge">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">METARs Loaded:</span>
+                    <span class="status-value" id="metarsLoaded">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">METAR File Age:</span>
+                    <span class="status-value" id="metarFileAge">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">TAFs Loaded:</span>
+                    <span class="status-value" id="tafsLoaded">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">TAF File Age:</span>
+                    <span class="status-value" id="tafFileAge">-</span>
+                </div>
+                <div class="button-group">
+                    <button onclick="refreshStations()" class="success">Refresh Stations</button>
+                    <button onclick="refreshWeather()" class="success">Refresh Weather</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const ws = new WebSocket('ws://localhost:8080/ws');
+        
+        // Debounce status updates to prevent flickering
+        let statusUpdateTimeout = null;
+        let lastFSUIPCStatus = null;
+        
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'update') {
+                // Debounce status updates - only update if status actually changed
+                if (statusUpdateTimeout) {
+                    clearTimeout(statusUpdateTimeout);
+                }
+                statusUpdateTimeout = setTimeout(() => {
+                    updateStatus(data.data);
+                }, 100); // 100ms debounce
+            }
+        };
+        
+        function showMessage(text, type) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            msg.className = `message ${type}`;
+            msg.style.display = 'block';
+            setTimeout(() => {
+                msg.style.display = 'none';
+            }, 3000);
+        }
+        
+        async function updateStatus(data) {
+            // Update FSUIPC status (only if changed to prevent flickering)
+            const fsuipcStatus = document.getElementById('fsuipcStatus');
+            const newStatus = data.status && data.status.fsuipc_connected;
+            
+            // Only update if status actually changed
+            if (newStatus !== lastFSUIPCStatus) {
+                lastFSUIPCStatus = newStatus;
+                if (newStatus) {
+                    fsuipcStatus.textContent = 'Connected';
+                    fsuipcStatus.className = 'status-value connected';
+                } else {
+                    fsuipcStatus.textContent = 'Disconnected';
+                    fsuipcStatus.className = 'status-value disconnected';
+                }
+            }
+            
+            // Update aircraft state
+            if (data.aircraft_state) {
+                const ac = data.aircraft_state;
+                document.getElementById('aircraftPosition').textContent = 
+                    `${ac.lat.toFixed(4)}, ${ac.lon.toFixed(4)}`;
+                document.getElementById('aircraftAltitude').textContent = 
+                    `${ac.alt_ft.toFixed(0)} ft`;
+                document.getElementById('aircraftSpeed').textContent = 
+                    `${ac.gs_kt.toFixed(1)} kt`;
+                document.getElementById('aircraftHeading').textContent = 
+                    `${ac.heading_deg.toFixed(1)}°`;
+            } else {
+                document.getElementById('aircraftPosition').textContent = 'N/A';
+                document.getElementById('aircraftAltitude').textContent = 'N/A';
+                document.getElementById('aircraftSpeed').textContent = 'N/A';
+                document.getElementById('aircraftHeading').textContent = 'N/A';
+            }
+            
+            // Update stations
+            if (data.status && data.status.stations) {
+                const stationsList = document.getElementById('stationsList');
+                if (data.status.stations.length > 0) {
+                    stationsList.innerHTML = data.status.stations.map(s => 
+                        `<div class="station-item">
+                            <strong>${s.icao}</strong> - ${s.name}<br>
+                            <small>Distance: ${s.distance_nm.toFixed(1)} NM</small>
+                        </div>`
+                    ).join('');
+                } else {
+                    stationsList.innerHTML = '<div class="loading">No stations selected</div>';
+                }
+            }
+            
+            // Update weather updates
+            if (data.status && data.status.weather_updates) {
+                const weatherUpdates = document.getElementById('weatherUpdates');
+                if (data.status.weather_updates.length > 0) {
+                    weatherUpdates.innerHTML = data.status.weather_updates.map(w => {
+                        let html = `<div class="station-item">
+                            <strong>${w.icao}</strong> - ${w.name}<br>`;
+                        
+                        if (w.metar) {
+                            const age = Math.round(w.metar.age_seconds);
+                            html += `<small>METAR: ${age}s ago</small><br>`;
+                        } else {
+                            html += `<small>METAR: Not available</small><br>`;
+                        }
+                        
+                        if (w.taf) {
+                            const age = Math.round(w.taf.age_seconds);
+                            html += `<small>TAF: ${age}s ago</small>`;
+                        } else {
+                            html += `<small>TAF: Not available</small>`;
+                        }
+                        
+                        html += `</div>`;
+                        return html;
+                    }).join('');
+                } else {
+                    weatherUpdates.innerHTML = '<div class="loading">No weather updates</div>';
+                }
+            }
+            
+            // Update last update time
+            if (data.status && data.status.last_update) {
+                const date = new Date(data.status.last_update * 1000);
+                document.getElementById('lastUpdate').textContent = date.toLocaleTimeString();
+            }
+            
+            // Update injection status - use last_injection_success from status, not weather_injected from update cycle
+            if (data.status) {
+                const status = document.getElementById('injectionStatus');
+                const lastInjectionSuccess = data.status.last_injection_success;
+                const lastInjectionTime = data.status.last_injection_time;
+                
+                if (lastInjectionSuccess === true) {
+                    status.textContent = 'Success';
+                    status.className = 'status-value connected';
+                } else if (lastInjectionSuccess === false) {
+                    status.textContent = 'Failed';
+                    status.className = 'status-value disconnected';
+                } else {
+                    // No injection attempted yet
+                    status.textContent = 'Not attempted';
+                    status.className = 'status-value';
+                }
+                
+                // Update last update time
+                if (lastInjectionTime) {
+                    const timeAgo = Math.round((Date.now() / 1000 - lastInjectionTime));
+                    document.getElementById('lastUpdate').textContent = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo / 60)}m ago`;
+                }
+            }
+            
+            // Also check weather_injected from current update cycle (for immediate feedback)
+            if (data.weather_injected !== undefined && data.weather_injected === true) {
+                // Just injected - show success immediately
+                const status = document.getElementById('injectionStatus');
+                status.textContent = 'Success';
+                status.className = 'status-value connected';
+            }
+            
+            // Update data statistics
+            if (data.status && data.status.data_statistics) {
+                const stats = data.status.data_statistics;
+                
+                // Stations
+                if (stats.stations) {
+                    document.getElementById('stationsLoaded').textContent = stats.stations.loaded || 0;
+                    if (stats.stations.file_age_seconds !== null && stats.stations.file_age_seconds !== undefined) {
+                        const ageHours = (stats.stations.file_age_seconds / 3600).toFixed(1);
+                        document.getElementById('stationsFileAge').textContent = `${ageHours} hours`;
+                    } else {
+                        document.getElementById('stationsFileAge').textContent = 'N/A';
+                    }
+                }
+                
+                // METARs
+                if (stats.metars) {
+                    document.getElementById('metarsLoaded').textContent = stats.metars.loaded || 0;
+                    if (stats.metars.file_age_seconds !== null && stats.metars.file_age_seconds !== undefined) {
+                        const ageHours = (stats.metars.file_age_seconds / 3600).toFixed(1);
+                        document.getElementById('metarFileAge').textContent = `${ageHours} hours`;
+                    } else {
+                        document.getElementById('metarFileAge').textContent = 'N/A';
+                    }
+                }
+                
+                // TAFs
+                if (stats.tafs) {
+                    document.getElementById('tafsLoaded').textContent = stats.tafs.loaded || 0;
+                    if (stats.tafs.file_age_seconds !== null && stats.tafs.file_age_seconds !== undefined) {
+                        const ageHours = (stats.tafs.file_age_seconds / 3600).toFixed(1);
+                        document.getElementById('tafFileAge').textContent = `${ageHours} hours`;
+                    } else {
+                        document.getElementById('tafFileAge').textContent = 'N/A';
+                    }
+                }
+            }
+        }
+        
+        async function refreshStations() {
+            showMessage('Refreshing stations...', 'info');
+            try {
+                const res = await fetch('/api/data/refresh-stations', { method: 'POST' });
+                const data = await res.json();
+                showMessage(data.message || `Downloaded ${data.count || 0} stations`, data.success ? 'success' : 'error');
+                // Reload status after a short delay
+                setTimeout(() => {
+                    fetch('/api/status').then(r => r.json()).then(d => updateStatus(d));
+                }, 1000);
+            } catch (error) {
+                showMessage('Error refreshing stations: ' + error.message, 'error');
+            }
+        }
+        
+        async function refreshWeather() {
+            showMessage('Refreshing weather data...', 'info');
+            try {
+                const res = await fetch('/api/data/refresh-weather', { method: 'POST' });
+                const data = await res.json();
+                showMessage(data.message || `Downloaded ${data.metars_count || 0} METARs and ${data.tafs_count || 0} TAFs`, data.success ? 'success' : 'error');
+                // Reload status after a short delay
+                setTimeout(() => {
+                    fetch('/api/status').then(r => r.json()).then(d => updateStatus(d));
+                }, 1000);
+            } catch (error) {
+                showMessage('Error refreshing weather: ' + error.message, 'error');
+            }
+        }
+        
+        async function fsuipcConnect() {
+            const res = await fetch('/api/fsuipc/connect', { method: 'POST' });
+            const data = await res.json();
+            showMessage(data.message, data.success ? 'success' : 'error');
+            setTimeout(() => fetch('/api/status').then(r => r.json()).then(d => updateStatus(d)), 500);
+        }
+        
+        async function fsuipcReconnect() {
+            const res = await fetch('/api/fsuipc/reconnect', { method: 'POST' });
+            const data = await res.json();
+            showMessage(data.message, data.success ? 'success' : 'error');
+            setTimeout(() => fetch('/api/status').then(r => r.json()).then(d => updateStatus(d)), 500);
+        }
+        
+        async function fsuipcDisconnect() {
+            const res = await fetch('/api/fsuipc/disconnect', { method: 'POST' });
+            const data = await res.json();
+            showMessage(data.message, data.success ? 'success' : 'error');
+            setTimeout(() => fetch('/api/status').then(r => r.json()).then(d => updateStatus(d)), 500);
+        }
+        
+        async function forceWeatherDownload() {
+            const res = await fetch('/api/force-weather-download', { method: 'POST' });
+            const data = await res.json();
+            showMessage(data.message, data.success ? 'success' : 'error');
+        }
+        
+        async function forceWeatherInjection() {
+            const res = await fetch('/api/force-weather-injection', { method: 'POST' });
+            const data = await res.json();
+            showMessage(data.message, data.success ? 'success' : 'error');
+        }
+        
+        async function triggerUpdate() {
+            const res = await fetch('/api/trigger-update', { method: 'POST' });
+            const data = await res.json();
+            showMessage('Full update completed', data.success ? 'success' : 'error');
+            updateStatus(data);
+        }
+        
+        async function lookupICAO() {
+            const icaoInput = document.getElementById('icaoLookup');
+            const icao = icaoInput.value.trim().toUpperCase();
+            
+            // Clear any special keywords
+            if (icao === 'STORED' || icao === 'SHOW' || icao === 'LIST') {
+                showMessage('Please enter a valid 4-letter ICAO code (e.g., KJFK, SBGR)', 'error');
+                icaoInput.value = '';
+                return;
+            }
+            
+            if (!icao || icao.length !== 4) {
+                showMessage('Please enter a valid 4-letter ICAO code (e.g., KJFK, SBGR)', 'error');
+                return;
+            }
+            
+            // Validate it's actually letters
+            if (!/^[A-Z]{4}$/.test(icao)) {
+                showMessage('ICAO code must be exactly 4 letters (e.g., KJFK, SBGR)', 'error');
+                return;
+            }
+            
+            try {
+                // First try to get existing data
+                let data = null;
+                try {
+                    const res = await fetch(`/api/weather/${icao}`);
+                    if (res.ok) {
+                        data = await res.json();
+                    } else if (res.status === 404) {
+                        // Not found, will fetch below
+                        data = null;
+                    } else {
+                        const text = await res.text();
+                        throw new Error(`Server error: ${res.status} - ${text.substring(0, 100)}`);
+                    }
+                } catch (e) {
+                    if (e.message && e.message.includes('404')) {
+                        // Not found, will fetch below
+                        data = null;
+                    } else {
+                        console.error('Error fetching existing data:', e);
+                        // Continue to fetch below
+                        data = null;
+                    }
+                }
+                
+                // If no data found, fetch it
+                if (!data || (!data.metar && !data.taf)) {
+                    showMessage(`Fetching weather for ${icao}...`, 'info');
+                    const fetchRes = await fetch(`/api/weather/fetch/${icao}`, { method: 'POST' });
+                    
+                    if (!fetchRes.ok) {
+                        const text = await fetchRes.text();
+                        let errorMsg = `Server error: ${fetchRes.status}`;
+                        try {
+                            const errorJson = JSON.parse(text);
+                            errorMsg = errorJson.detail || errorMsg;
+                        } catch {
+                            errorMsg = text.substring(0, 200);
+                        }
+                        throw new Error(errorMsg);
+                    }
+                    
+                    const fetchData = await fetchRes.json();
+                    
+                    if (fetchData.success && fetchData.data) {
+                        data = fetchData.data;
+                        showMessage(`Weather fetched for ${icao}`, 'success');
+                    } else {
+                        showMessage(fetchData.message || `Failed to fetch weather for ${icao}`, 'error');
+                        if (fetchData.data) {
+                            data = fetchData.data; // Still show what we got
+                        } else {
+                            return;
+                        }
+                    }
+                }
+                
+                // Display the data
+                let info = `ICAO: ${data.icao}\n`;
+                if (data.station) {
+                    info += `Station: ${data.station.name}, ${data.station.country}\n`;
+                } else {
+                    info += `Station: Not in database\n`;
+                }
+                info += `\n`;
+                
+                if (data.metar) {
+                    const age = Math.round(data.metar.age_seconds);
+                    info += `METAR (${age}s ago):\n${data.metar.raw}\n\n`;
+                } else {
+                    info += `METAR: Not available\n\n`;
+                }
+                
+                if (data.taf) {
+                    const age = Math.round(data.taf.age_seconds);
+                    info += `TAF (${age}s ago):\n${data.taf.raw}`;
+                } else {
+                    info += `TAF: Not available`;
+                }
+                
+                alert(info);
+                
+                // Refresh status to show updated weather
+                setTimeout(() => fetch('/api/status').then(r => r.json()).then(d => updateStatus(d)), 500);
+            } catch (error) {
+                showMessage(`Error: ${error.message}`, 'error');
+                console.error('Lookup error:', error);
+            }
+        }
+        
+        function showStoredWeather() {
+            // Redirect to stored weather page
+            window.location.href = '/stored-weather';
+        }
+        
+        // Allow Enter key in ICAO lookup
+        document.getElementById('icaoLookup').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                lookupICAO();
+            }
+        });
+        
+        // Auto-uppercase input
+        document.getElementById('icaoLookup').addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 4);
+        });
+        
+        // Initial load
+        fetch('/api/status')
+            .then(r => r.json())
+            .then(data => {
+                updateStatus(data);
+            });
+        
+        // Periodic refresh
+        setInterval(() => {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(data => {
+                    updateStatus(data);
+                });
+        }, 5000);
+    </script>
+</body>
+</html>
